@@ -1,0 +1,1587 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<meta name="theme-color" content="#00ff88" />
+<title>GEO.VOID — Угадай место на Земле</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@400;700;900&family=Space+Grotesk:wght@400;500;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<style>
+:root{
+  --neon:#00ff88;--neon-bright:#4dffb8;--neon-dark:#00cc6a;
+  --lime:#a3e635;--emerald:#10b981;--teal:#14b8a6;
+  --green-200:#bbf7d0;--green-600:#16a34a;
+  --bg:#000;--panel:rgba(5,25,15,.6);--border:rgba(0,255,136,.22);
+  --text-dim:rgba(220,252,231,.6);--gold:#ffd700;--red:#ff5577;
+  --font-display:'Unbounded',system-ui,sans-serif;
+  --font-body:'Space Grotesk',system-ui,sans-serif;
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{
+  background:#000;color:#fff;font-family:var(--font-body);
+  overflow:hidden;min-height:100vh;position:fixed;width:100%;
+  -webkit-overflow-scrolling:touch;overscroll-behavior:none;
+}
+button,a{-webkit-user-select:none;user-select:none;font:inherit;color:inherit}
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-thumb{background:var(--neon);border-radius:6px}
+
+/* ================ ANIMATED BACKGROUND ================ */
+.bg-layer{position:fixed;inset:0;z-index:0;pointer-events:none}
+.bg-glow{
+  background:
+    radial-gradient(circle at 15% 10%,rgba(0,255,136,.35),transparent 45%),
+    radial-gradient(circle at 88% 88%,rgba(16,185,129,.3),transparent 45%),
+    radial-gradient(circle at 55% 45%,rgba(0,204,106,.2),transparent 55%),
+    radial-gradient(circle at 30% 80%,rgba(163,230,53,.15),transparent 40%);
+  animation:bgBreathe 20s ease-in-out infinite alternate;
+  filter:blur(60px);
+}
+@keyframes bgBreathe{
+  0%{transform:scale(1) rotate(0);opacity:.8}
+  50%{transform:scale(1.15) rotate(2deg);opacity:1}
+  100%{transform:scale(1.2) rotate(0);opacity:.9}
+}
+.bg-grid{
+  background-image:
+    linear-gradient(rgba(0,255,136,.05) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(0,255,136,.05) 1px,transparent 1px);
+  background-size:50px 50px;
+  animation:gridFlow 10s linear infinite;
+}
+@keyframes gridFlow{to{background-position:50px 50px}}
+.bg-vignette{background:radial-gradient(circle at 50% 50%,transparent 40%,rgba(0,0,0,.92) 100%)}
+
+/* Floating orbs */
+.orb{
+  position:fixed;border-radius:50%;pointer-events:none;z-index:0;
+  filter:blur(80px);mix-blend-mode:screen;opacity:.45;
+}
+.orb-1{width:400px;height:400px;background:var(--neon);top:-100px;left:-100px;animation:orb1 25s ease-in-out infinite}
+.orb-2{width:340px;height:340px;background:var(--emerald);bottom:-80px;right:-80px;animation:orb2 30s ease-in-out infinite}
+.orb-3{width:280px;height:280px;background:var(--lime);top:40%;right:20%;animation:orb3 20s ease-in-out infinite}
+@keyframes orb1{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(200px,150px) scale(1.2)}}
+@keyframes orb2{0%,100%{transform:translate(0,0) scale(1.1)}50%{transform:translate(-180px,-120px) scale(.9)}}
+@keyframes orb3{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(-150px,200px) scale(1.15)}}
+
+/* Scanline overlay for cinematic feel */
+.scanlines{
+  position:fixed;inset:0;z-index:9998;pointer-events:none;opacity:.04;
+  background:repeating-linear-gradient(0deg,rgba(0,255,136,.4) 0,rgba(0,255,136,.4) 1px,transparent 1px,transparent 3px);
+  mix-blend-mode:overlay;
+}
+
+/* ================ CURSOR ================ */
+.cursor-dot,.cursor-ring,.cursor-trail{
+  position:fixed;border-radius:50%;pointer-events:none;z-index:99999;
+  transform:translate(-50%,-50%);mix-blend-mode:screen;display:none;
+}
+@media (hover:hover) and (pointer:fine){
+  .cursor-dot,.cursor-ring{display:block}
+  html,body{cursor:none}
+  .cursor-dot{
+    width:6px;height:6px;background:var(--neon);
+    box-shadow:0 0 15px var(--neon),0 0 30px var(--neon);
+    transition:width .2s,height .2s;
+  }
+  .cursor-ring{
+    width:44px;height:44px;border:1.5px solid var(--neon);
+    box-shadow:0 0 20px rgba(0,255,136,.6),inset 0 0 20px rgba(0,255,136,.2);
+    transition:width .3s cubic-bezier(.2,.9,.3,1.4),height .3s cubic-bezier(.2,.9,.3,1.4),border-color .3s;
+  }
+  .cursor-ring.grow{
+    width:80px;height:80px;border-color:var(--lime);
+    box-shadow:0 0 40px rgba(163,230,53,.8),inset 0 0 30px rgba(163,230,53,.3);
+  }
+  .cursor-ring.click{width:24px;height:24px;border-color:#fff}
+  .cursor-trail{
+    display:block;width:8px;height:8px;
+    background:var(--neon);opacity:.6;
+    box-shadow:0 0 10px var(--neon);
+    transition:opacity .6s;
+  }
+}
+
+/* ================ PRELOADER ================ */
+.preloader{
+  position:fixed;inset:0;background:#000;z-index:100000;
+  display:flex;align-items:center;justify-content:center;flex-direction:column;gap:32px;
+  transition:opacity .8s cubic-bezier(.4,0,.2,1),visibility .8s;
+}
+.preloader.hide{opacity:0;visibility:hidden;pointer-events:none}
+.preloader-logo{
+  font-family:var(--font-display);font-weight:900;font-size:clamp(1.8rem,7vw,4.5rem);
+  letter-spacing:.08em;display:flex;gap:2px;
+  filter:drop-shadow(0 0 40px rgba(0,255,136,.8));
+}
+.preloader-logo span{
+  display:inline-block;
+  background:linear-gradient(180deg,#fff,var(--neon),var(--lime));
+  -webkit-background-clip:text;background-clip:text;color:transparent;
+  animation:letterDrop .6s cubic-bezier(.2,.9,.3,1.4) both;
+}
+@keyframes letterDrop{
+  from{opacity:0;transform:translateY(-40px) rotateX(-90deg) scale(.5)}
+  to{opacity:1;transform:translateY(0) rotateX(0) scale(1)}
+}
+.preloader-bar{
+  width:240px;height:3px;background:rgba(0,255,136,.1);
+  border-radius:3px;overflow:hidden;position:relative;
+}
+.preloader-bar::after{
+  content:'';position:absolute;inset:0;
+  background:linear-gradient(90deg,transparent,var(--neon),var(--lime),var(--neon),transparent);
+  background-size:200% 100%;
+  border-radius:3px;
+  animation:preloadBar 1.8s linear infinite;
+  box-shadow:0 0 20px var(--neon);
+}
+@keyframes preloadBar{
+  0%{transform:translateX(-100%)}
+  100%{transform:translateX(100%)}
+}
+.preloader-text{
+  font-family:var(--font-display);font-weight:500;font-size:.7rem;
+  letter-spacing:.5em;text-transform:uppercase;color:var(--text-dim);
+  animation:pulse 2s ease-in-out infinite;
+}
+@keyframes pulse{0%,100%{opacity:.5}50%{opacity:1}}
+.preloader-progress{
+  font-family:var(--font-display);font-weight:900;font-size:1.4rem;
+  color:var(--neon);text-shadow:0 0 20px rgba(0,255,136,.8);
+  margin-top:-16px;
+}
+
+/* ================ START SCREEN ================ */
+.start-screen{
+  position:fixed;inset:0;z-index:90;
+  background:radial-gradient(circle at 50% 40%,rgba(0,255,136,.15),transparent 55%),#000;
+  display:flex;align-items:center;justify-content:center;padding:20px;
+  overflow-y:auto;overflow-x:hidden;
+}
+.start-screen::before{
+  content:'';position:absolute;inset:0;
+  background:radial-gradient(circle at var(--mx,50%) var(--my,50%),rgba(0,255,136,.08),transparent 40%);
+  pointer-events:none;transition:background .1s;
+}
+.start-card{max-width:640px;width:100%;text-align:center;padding:20px 0;position:relative;z-index:1}
+.start-tag{
+  display:inline-flex;align-items:center;gap:8px;
+  font-family:var(--font-display);font-weight:700;
+  font-size:.6rem;letter-spacing:.4em;text-transform:uppercase;
+  padding:8px 18px;border-radius:999px;color:var(--neon);
+  background:rgba(0,255,136,.08);border:1px solid rgba(0,255,136,.4);
+  box-shadow:inset 0 0 15px rgba(0,255,136,.15),0 0 20px rgba(0,255,136,.3);
+  animation:stagger 0.7s .2s both;
+}
+.start-tag::before{
+  content:'';width:6px;height:6px;border-radius:50%;
+  background:var(--neon);box-shadow:0 0 10px var(--neon);
+  animation:pulseDot 1.5s ease-in-out infinite;
+}
+@keyframes pulseDot{50%{opacity:.4;transform:scale(.8)}}
+@keyframes stagger{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+
+.start-title{
+  font-family:var(--font-display);font-weight:900;
+  font-size:clamp(2rem,9vw,4.2rem);line-height:1;letter-spacing:-.02em;
+  text-transform:uppercase;margin:24px 0 20px;
+  background:linear-gradient(180deg,#fff 0%,var(--green-200) 35%,var(--neon) 70%,var(--emerald) 100%);
+  -webkit-background-clip:text;background-clip:text;color:transparent;
+  filter:drop-shadow(0 0 30px rgba(0,255,136,.5));
+}
+.start-title .word{display:inline-block;overflow:hidden;vertical-align:top}
+.start-title .word span{
+  display:inline-block;
+  animation:slideUp .8s cubic-bezier(.2,.9,.3,1.4) both;
+}
+.start-title .word:nth-child(1) span{animation-delay:.3s}
+.start-title .word:nth-child(3) span{animation-delay:.5s}
+@keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
+.start-title em{
+  font-style:normal;
+  background:linear-gradient(135deg,var(--lime),var(--neon));
+  -webkit-background-clip:text;background-clip:text;color:transparent;
+  position:relative;
+}
+.start-title em::after{
+  content:'';position:absolute;bottom:-4px;left:0;right:0;height:3px;
+  background:linear-gradient(90deg,transparent,var(--lime),transparent);
+  animation:underlinePulse 2s ease-in-out infinite;
+}
+@keyframes underlinePulse{0%,100%{opacity:.4;transform:scaleX(.8)}50%{opacity:1;transform:scaleX(1)}}
+
+.start-desc{
+  font-size:1rem;line-height:1.7;color:var(--text-dim);
+  max-width:500px;margin:0 auto 32px;
+  animation:stagger .7s .7s both;
+}
+.start-features{
+  display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:32px;
+}
+.start-feature{
+  background:var(--panel);border:1px solid var(--border);border-radius:16px;
+  padding:18px 12px;backdrop-filter:blur(20px);
+  transition:all .4s cubic-bezier(.2,.9,.3,1.4);
+  animation:stagger .7s both;
+  position:relative;overflow:hidden;
+}
+.start-feature:nth-child(1){animation-delay:1s}
+.start-feature:nth-child(2){animation-delay:1.15s}
+.start-feature:nth-child(3){animation-delay:1.3s}
+.start-feature::before{
+  content:'';position:absolute;inset:0;
+  background:radial-gradient(circle at 50% 0%,rgba(0,255,136,.25),transparent 60%);
+  opacity:0;transition:opacity .4s;
+}
+.start-feature:hover{transform:translateY(-6px) scale(1.02);border-color:var(--neon);box-shadow:0 20px 40px rgba(0,255,136,.35)}
+.start-feature:hover::before{opacity:1}
+.start-feature-icon{
+  width:44px;height:44px;margin:0 auto 10px;
+  border-radius:14px;
+  background:linear-gradient(135deg,rgba(0,255,136,.25),rgba(16,185,129,.1));
+  display:grid;place-items:center;color:var(--neon);
+  border:1px solid var(--border);
+  position:relative;z-index:1;
+  transition:transform .4s cubic-bezier(.2,.9,.3,1.4);
+}
+.start-feature:hover .start-feature-icon{transform:rotate(-8deg) scale(1.1)}
+.start-feature-icon svg{width:22px;height:22px}
+.start-feature-title{
+  font-family:var(--font-display);font-weight:700;font-size:.72rem;
+  color:#fff;margin-bottom:4px;position:relative;z-index:1;
+}
+.start-feature-desc{
+  font-size:.65rem;color:var(--text-dim);line-height:1.4;
+  position:relative;z-index:1;
+}
+@media (max-width:420px){.start-features{grid-template-columns:1fr}}
+
+/* ================ BUTTONS ================ */
+.btn{
+  font-family:var(--font-display);font-weight:900;
+  font-size:.72rem;letter-spacing:.16em;text-transform:uppercase;
+  padding:18px 32px;border-radius:14px;border:none;
+  position:relative;overflow:hidden;
+  transition:transform .3s cubic-bezier(.2,.9,.3,1.4),box-shadow .3s;
+  display:inline-flex;align-items:center;justify-content:center;gap:10px;
+  white-space:nowrap;touch-action:manipulation;
+  isolation:isolate;
+}
+.btn svg{width:16px;height:16px;flex-shrink:0}
+.btn::after{
+  content:'';position:absolute;inset:0;
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,.4),transparent);
+  transform:translateX(-100%);z-index:1;
+}
+.btn:hover::after{animation:shine .8s ease}
+@keyframes shine{to{transform:translateX(100%)}}
+.btn-primary{
+  background:linear-gradient(135deg,var(--neon),var(--emerald));
+  color:#000;
+  box-shadow:0 0 30px rgba(0,255,136,.6),inset 0 2px 0 rgba(255,255,255,.4),0 10px 30px rgba(0,255,136,.25);
+}
+.btn-primary:hover{transform:translateY(-3px) scale(1.02);box-shadow:0 0 50px rgba(0,255,136,.9),0 20px 40px rgba(0,255,136,.4)}
+.btn-primary:active{transform:scale(.98)}
+.btn-primary:disabled{opacity:.35;pointer-events:none}
+.btn-ghost{
+  background:rgba(0,20,10,.75);backdrop-filter:blur(10px);
+  border:1px solid var(--border);color:var(--green-200);
+}
+.btn-ghost:hover{border-color:var(--neon);background:rgba(0,255,136,.1)}
+.btn-block{width:100%}
+
+/* Ripple on button click */
+.ripple{
+  position:absolute;border-radius:50%;
+  background:radial-gradient(circle,rgba(255,255,255,.6),transparent 70%);
+  transform:scale(0);pointer-events:none;
+  animation:rippleAnim .6s ease-out;
+}
+@keyframes rippleAnim{to{transform:scale(4);opacity:0}}
+
+/* ================ GAME ================ */
+.game{position:fixed;inset:0;z-index:10;display:flex;flex-direction:column}
+
+.hud-top{
+  position:absolute;top:0;left:0;right:0;z-index:50;
+  padding:12px 14px;
+  display:flex;align-items:center;justify-content:space-between;gap:10px;
+  background:linear-gradient(180deg,rgba(0,0,0,.9) 0%,transparent 100%);
+  pointer-events:none;
+}
+.hud-top>*{pointer-events:auto}
+.hud-brand{display:flex;align-items:center;gap:10px;min-width:0}
+.hud-logo{
+  width:42px;height:42px;border-radius:12px;flex-shrink:0;
+  background:linear-gradient(135deg,var(--neon),var(--emerald));
+  display:grid;place-items:center;
+  font-family:var(--font-display);font-weight:900;font-size:1.2rem;color:#000;
+  box-shadow:0 0 25px rgba(0,255,136,.6),inset 0 2px 0 rgba(255,255,255,.4);
+  position:relative;overflow:hidden;
+}
+.hud-logo::before{
+  content:'';position:absolute;inset:0;
+  background:linear-gradient(45deg,transparent,rgba(255,255,255,.5),transparent);
+  transform:translateX(-100%);
+  animation:logoShine 3s ease-in-out infinite;
+}
+@keyframes logoShine{0%,60%,100%{transform:translateX(-100%)}30%{transform:translateX(100%)}}
+.hud-brand-text{
+  font-family:var(--font-display);font-weight:900;
+  font-size:.85rem;letter-spacing:.06em;color:#fff;
+  text-shadow:0 0 15px rgba(0,255,136,.6);
+}
+.hud-brand-sub{font-size:.5rem;letter-spacing:.3em;text-transform:uppercase;color:var(--neon);margin-top:1px}
+
+.hud-round{display:flex;gap:6px;align-items:center}
+.round-dot{
+  width:10px;height:10px;border-radius:50%;
+  background:rgba(0,255,136,.15);border:1px solid rgba(0,255,136,.4);
+  transition:all .4s cubic-bezier(.2,.9,.3,1.4);
+}
+.round-dot.active{
+  background:var(--neon);box-shadow:0 0 15px var(--neon);
+  transform:scale(1.4);
+  animation:activeDot 1.5s ease-in-out infinite;
+}
+@keyframes activeDot{50%{box-shadow:0 0 25px var(--neon),0 0 40px var(--neon)}}
+.round-dot.done{
+  background:var(--green-600);border-color:var(--green-600);
+  transform:scale(1);
+}
+
+.hud-stats{display:flex;gap:8px}
+.hud-stat{
+  background:rgba(0,20,10,.8);backdrop-filter:blur(15px);
+  border:1px solid var(--border);border-radius:12px;
+  padding:8px 12px;min-width:70px;text-align:center;
+  transition:transform .3s,box-shadow .3s;
+}
+.hud-stat:hover{transform:translateY(-2px);box-shadow:0 8px 20px rgba(0,255,136,.3)}
+.hud-stat-label{
+  font-family:var(--font-display);font-weight:700;
+  font-size:.5rem;letter-spacing:.2em;text-transform:uppercase;
+  color:var(--text-dim);
+}
+.hud-stat-value{
+  font-family:var(--font-display);font-weight:900;
+  font-size:1.05rem;color:#fff;margin-top:3px;
+  text-shadow:0 0 12px rgba(0,255,136,.5);
+}
+.hud-stat-value.gold{
+  color:var(--gold);-webkit-text-fill-color:var(--gold);
+  text-shadow:0 0 15px rgba(255,215,0,.7);
+}
+.hud-stat-value.bump{animation:bumpNum .4s cubic-bezier(.2,.9,.3,1.4)}
+@keyframes bumpNum{50%{transform:scale(1.3)}}
+
+.game-main{position:relative;flex:1;overflow:hidden}
+.pano-container{
+  position:absolute;inset:0;background:#001208;
+  display:flex;align-items:center;justify-content:center;
+  overflow:hidden;
+}
+#pano{
+  width:100%;height:100%;position:relative;
+  display:flex;align-items:center;justify-content:center;
+}
+#pano img{
+  position:absolute;inset:0;width:100%;height:100%;
+  object-fit:cover;
+  filter:brightness(.9) saturate(1.15) contrast(1.05);
+  animation:kenBurns 15s ease-out both;
+  will-change:transform;
+}
+@keyframes kenBurns{
+  from{transform:scale(1.12) translate(2%,1%)}
+  to{transform:scale(1) translate(0,0)}
+}
+#pano img.loading{opacity:0}
+#pano img.loaded{
+  opacity:1;
+  transition:opacity .8s cubic-bezier(.4,0,.2,1);
+}
+.pano-overlay{
+  position:absolute;inset:0;pointer-events:none;z-index:2;
+  background:
+    linear-gradient(180deg,rgba(0,0,0,.5) 0%,transparent 20%,transparent 75%,rgba(0,0,0,.75) 100%),
+    radial-gradient(circle at 50% 50%,transparent 40%,rgba(0,0,0,.4) 100%);
+}
+.photo-credit{
+  position:absolute;bottom:10px;right:14px;z-index:3;
+  font-size:.6rem;color:rgba(255,255,255,.5);
+  text-shadow:0 0 4px rgba(0,0,0,.9);
+  letter-spacing:.1em;
+  text-transform:uppercase;
+}
+
+/* Skeleton for loading */
+.pano-skeleton{
+  position:absolute;inset:0;z-index:2;
+  display:flex;align-items:center;justify-content:center;flex-direction:column;
+  gap:16px;background:radial-gradient(circle at 50% 50%,#0a1f15,#000);
+}
+.skeleton-shimmer{
+  position:absolute;inset:0;
+  background:linear-gradient(90deg,transparent,rgba(0,255,136,.08),transparent);
+  background-size:200% 100%;
+  animation:shimmer 1.8s linear infinite;
+}
+@keyframes shimmer{to{background-position:-200% 0}}
+.pano-skeleton-content{
+  position:relative;z-index:1;text-align:center;
+  display:flex;flex-direction:column;align-items:center;gap:16px;
+}
+.spinner-hex{
+  width:50px;height:50px;
+  background:conic-gradient(from 0deg,transparent,var(--neon),transparent 60%);
+  border-radius:50%;
+  animation:spin 1.2s linear infinite;
+  box-shadow:0 0 30px rgba(0,255,136,.5);
+  position:relative;
+}
+.spinner-hex::before{
+  content:'';position:absolute;inset:4px;
+  background:#0a1f15;border-radius:50%;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+.pano-loading-text{
+  font-family:var(--font-display);font-weight:700;
+  font-size:.7rem;letter-spacing:.3em;text-transform:uppercase;
+  color:var(--neon);
+  animation:blinkText 1.5s ease-in-out infinite;
+}
+@keyframes blinkText{50%{opacity:.5}}
+
+.hud-bottom{
+  position:absolute;bottom:0;left:0;right:0;z-index:50;
+  padding:14px;
+  display:flex;align-items:flex-end;justify-content:space-between;gap:10px;
+  background:linear-gradient(0deg,rgba(0,0,0,.95) 0%,transparent 100%);
+  pointer-events:none;
+}
+.hud-bottom>*{pointer-events:auto}
+
+.compass{
+  width:60px;height:60px;border-radius:50%;flex-shrink:0;
+  background:radial-gradient(circle at 50% 50%,rgba(0,255,136,.15),rgba(0,20,10,.9));
+  border:2px solid rgba(0,255,136,.4);
+  display:grid;place-items:center;position:relative;
+  box-shadow:0 0 25px rgba(0,255,136,.35),inset 0 0 15px rgba(0,255,136,.1);
+}
+.compass::before{
+  content:'';position:absolute;inset:6px;
+  border-radius:50%;border:1px dashed rgba(0,255,136,.25);
+  animation:spin 20s linear infinite reverse;
+}
+.compass-needle{
+  width:3px;height:24px;
+  background:linear-gradient(180deg,var(--neon) 50%,var(--red) 50%);
+  border-radius:2px;position:absolute;top:6px;
+  box-shadow:0 0 10px var(--neon);
+  transition:transform .2s ease-out;
+  transform-origin:50% 24px;
+}
+.compass-n,.compass-s,.compass-e,.compass-w{
+  position:absolute;font-family:var(--font-display);
+  font-weight:900;font-size:.45rem;color:var(--text-dim);
+}
+.compass-n{top:2px;left:50%;transform:translateX(-50%);color:var(--neon)}
+.compass-s{bottom:2px;left:50%;transform:translateX(-50%)}
+.compass-e{right:3px;top:50%;transform:translateY(-50%)}
+.compass-w{left:3px;top:50%;transform:translateY(-50%)}
+
+.bottom-actions{display:flex;gap:8px;flex:1;justify-content:flex-end}
+
+@media (max-width:480px){
+  .hud-top{padding:10px}
+  .hud-logo{width:36px;height:36px;font-size:1rem}
+  .hud-brand-text{font-size:.72rem}
+  .hud-stat{padding:6px 9px;min-width:58px}
+  .hud-stat-value{font-size:.9rem}
+  .btn{padding:14px 20px;font-size:.62rem}
+  .compass{width:50px;height:50px}
+  .compass-needle{height:20px;transform-origin:50% 20px}
+}
+
+/* ================ MAP PANEL ================ */
+.map-backdrop{
+  position:fixed;inset:0;z-index:55;
+  background:rgba(0,0,0,.7);backdrop-filter:blur(6px);
+  opacity:0;visibility:hidden;
+  transition:opacity .4s,visibility .4s;
+}
+.map-backdrop.show{opacity:1;visibility:visible}
+
+.map-panel{
+  position:fixed;left:0;right:0;bottom:0;z-index:60;
+  height:66vh;
+  background:rgba(0,10,5,.98);backdrop-filter:blur(20px);
+  border-top:2px solid var(--neon);
+  border-radius:24px 24px 0 0;
+  box-shadow:0 -20px 80px rgba(0,0,0,.95),0 0 80px rgba(0,255,136,.4),inset 0 1px 0 rgba(255,255,255,.1);
+  transform:translateY(100%);
+  transition:transform .55s cubic-bezier(.2,.9,.3,1.2);
+  display:flex;flex-direction:column;
+  padding:18px 16px 14px;
+  will-change:transform;
+}
+.map-panel.show{transform:translateY(0)}
+.map-panel::before{
+  content:'';position:absolute;top:6px;left:50%;transform:translateX(-50%);
+  width:44px;height:4px;border-radius:4px;
+  background:rgba(0,255,136,.3);
+}
+.map-header{
+  display:flex;align-items:center;justify-content:space-between;
+  margin-bottom:12px;gap:10px;
+}
+.map-title{
+  font-family:var(--font-display);font-weight:900;
+  font-size:.85rem;color:#fff;
+  display:flex;align-items:center;gap:8px;
+}
+.map-title::before{
+  content:'';width:8px;height:8px;border-radius:50%;
+  background:var(--neon);box-shadow:0 0 12px var(--neon);flex-shrink:0;
+  animation:pulseDot 1.5s ease-in-out infinite;
+}
+.map-hint{font-size:.6rem;color:var(--text-dim);letter-spacing:.1em;text-transform:uppercase}
+.map-close{
+  width:34px;height:34px;flex-shrink:0;
+  border-radius:10px;
+  background:rgba(255,85,119,.15);
+  border:1px solid rgba(255,85,119,.5);
+  color:var(--red);
+  display:grid;place-items:center;
+  transition:all .2s;
+}
+.map-close:active{background:var(--red);color:#fff;transform:scale(.95)}
+.map-close svg{width:16px;height:16px}
+
+#map{
+  flex:1;border-radius:14px;overflow:hidden;
+  border:1px solid var(--border);background:#001208;min-height:0;
+  box-shadow:inset 0 0 40px rgba(0,255,136,.05);
+}
+.leaflet-container{background:#001208 !important;font-family:var(--font-body)}
+.leaflet-tile-pane{filter:hue-rotate(90deg) saturate(.7) brightness(.75) contrast(1.15)}
+.leaflet-control-attribution{background:rgba(0,20,10,.85) !important;color:rgba(220,252,231,.5) !important;font-size:9px !important}
+.leaflet-control-attribution a{color:var(--neon) !important}
+.leaflet-bar a{background:rgba(0,20,10,.9) !important;color:var(--neon) !important;border-color:var(--border) !important;transition:all .2s !important}
+.leaflet-bar a:hover{background:rgba(0,255,136,.15) !important}
+
+.map-confirm-bar{
+  margin-top:12px;
+  display:flex;gap:8px;
+}
+.map-confirm-bar .btn{flex:1}
+
+@media (max-width:480px){
+  .map-panel{height:76vh;padding:14px 12px 10px;border-radius:20px 20px 0 0}
+  .map-title{font-size:.75rem}
+  .map-hint{display:none}
+}
+
+/* ================ RESULT ================ */
+.result-overlay{
+  position:fixed;inset:0;z-index:80;
+  background:rgba(0,0,0,.94);backdrop-filter:blur(14px);
+  display:none;align-items:center;justify-content:center;padding:16px;
+  overflow-y:auto;
+}
+.result-overlay.show{display:flex}
+.result-card{
+  background:linear-gradient(180deg,rgba(5,30,15,.98),rgba(0,10,5,.98));
+  border:2px solid var(--neon);border-radius:26px;
+  padding:32px 24px;max-width:480px;width:100%;text-align:center;
+  box-shadow:0 0 80px rgba(0,255,136,.5),inset 0 0 60px rgba(0,255,136,.08);
+  animation:resultIn .6s cubic-bezier(.2,.9,.3,1.4);
+  position:relative;overflow:hidden;
+  transform-style:preserve-3d;
+  transition:transform .2s ease-out;
+}
+.result-card::before{
+  content:'';position:absolute;inset:-50%;
+  background:conic-gradient(from 0deg,transparent,rgba(0,255,136,.15),transparent 30%);
+  animation:spin 6s linear infinite;
+  z-index:0;pointer-events:none;
+}
+.result-card>*{position:relative;z-index:1}
+@keyframes resultIn{
+  0%{opacity:0;transform:scale(.85) translateY(30px) rotateX(-15deg)}
+  100%{opacity:1;transform:scale(1) translateY(0) rotateX(0)}
+}
+.result-icon{
+  width:80px;height:80px;margin:0 auto 16px;
+  border-radius:22px;
+  background:linear-gradient(135deg,rgba(0,255,136,.25),rgba(16,185,129,.1));
+  display:grid;place-items:center;color:var(--neon);
+  border:1px solid var(--border);
+  box-shadow:0 0 40px rgba(0,255,136,.4),inset 0 0 30px rgba(0,255,136,.1);
+  animation:iconPop .8s cubic-bezier(.2,.9,.3,1.4) .2s both;
+  position:relative;
+}
+.result-icon::before{
+  content:'';position:absolute;inset:-6px;border-radius:50%;
+  border:2px dashed rgba(0,255,136,.4);
+  animation:spin 12s linear infinite;
+}
+@keyframes iconPop{
+  0%{transform:scale(0) rotate(-180deg);opacity:0}
+  60%{transform:scale(1.15) rotate(10deg)}
+  100%{transform:scale(1) rotate(0);opacity:1}
+}
+.result-icon svg{width:40px;height:40px}
+.result-title{
+  font-family:var(--font-display);font-weight:900;font-size:1.5rem;
+  margin-bottom:10px;
+  background:linear-gradient(180deg,#fff,var(--neon));
+  -webkit-background-clip:text;background-clip:text;color:transparent;
+  animation:stagger .5s .4s both;
+}
+.result-sub{
+  font-size:.9rem;color:var(--text-dim);margin-bottom:24px;line-height:1.6;
+  animation:stagger .5s .5s both;
+}
+.result-stats{
+  display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:22px;
+}
+.result-stat{
+  background:rgba(0,255,136,.08);border:1px solid var(--border);
+  border-radius:16px;padding:16px 12px;
+  animation:stagger .5s both;
+}
+.result-stat:nth-child(1){animation-delay:.6s}
+.result-stat:nth-child(2){animation-delay:.7s}
+.result-stat-label{
+  font-family:var(--font-display);font-weight:700;
+  font-size:.55rem;letter-spacing:.22em;text-transform:uppercase;
+  color:var(--text-dim);
+}
+.result-stat-value{
+  font-family:var(--font-display);font-weight:900;
+  font-size:1.35rem;margin-top:6px;color:#fff;word-break:break-word;
+  text-shadow:0 0 15px rgba(0,255,136,.4);
+}
+.result-stat-value.neon{color:var(--neon);-webkit-text-fill-color:var(--neon)}
+
+/* Confetti container */
+.confetti-container{
+  position:fixed;inset:0;z-index:85;pointer-events:none;overflow:hidden;
+}
+.confetti-piece{
+  position:absolute;width:10px;height:10px;
+  animation:confettiFall 3s linear forwards;
+}
+@keyframes confettiFall{
+  0%{transform:translateY(-20px) rotate(0);opacity:1}
+  100%{transform:translateY(100vh) rotate(720deg);opacity:0}
+}
+
+/* ================ TOASTS ================ */
+.toast-wrap{
+  position:fixed;bottom:90px;left:50%;transform:translateX(-50%);
+  z-index:20000;display:flex;flex-direction:column-reverse;gap:8px;
+  pointer-events:none;max-width:92vw;
+}
+.toast{
+  font-family:var(--font-display);font-weight:700;
+  font-size:.68rem;letter-spacing:.12em;text-transform:uppercase;
+  padding:12px 22px;border-radius:12px;
+  background:rgba(0,30,15,.95);backdrop-filter:blur(15px);
+  border:1px solid rgba(0,255,136,.5);color:var(--green-200);
+  box-shadow:0 0 30px rgba(0,255,136,.4);
+  animation:toastIn .4s cubic-bezier(.2,.9,.3,1.4),toastOut .4s ease 3s forwards;
+  text-align:center;line-height:1.4;
+}
+.toast.error{border-color:var(--red);color:var(--red);box-shadow:0 0 30px rgba(255,85,119,.4)}
+@keyframes toastIn{from{opacity:0;transform:translateY(30px) scale(.9)}to{opacity:1;transform:translateY(0) scale(1)}}
+@keyframes toastOut{to{opacity:0;transform:translateY(-15px) scale(.95)}}
+
+/* Screen shake */
+@keyframes shake{
+  0%,100%{transform:translate(0,0)}
+  10%,30%,50%,70%,90%{transform:translate(-4px,2px)}
+  20%,40%,60%,80%{transform:translate(4px,-2px)}
+}
+.shake{animation:shake .5s ease}
+
+/* marker pulse */
+@keyframes pulseCorrect{
+  0%,100%{transform:scale(1);box-shadow:0 0 20px #ffd700,0 0 40px rgba(255,215,0,.5)}
+  50%{transform:scale(1.2);box-shadow:0 0 35px #ffd700,0 0 70px rgba(255,215,0,.8)}
+}
+@keyframes pulseGuess{
+  0%,100%{box-shadow:0 0 20px #00ff88,0 4px 12px rgba(0,0,0,.6)}
+  50%{box-shadow:0 0 35px #00ff88,0 0 60px rgba(0,255,136,.6),0 4px 12px rgba(0,0,0,.6)}
+}
+
+/* Ripple on map */
+.map-ripple{
+  position:absolute;
+  border:2px solid var(--neon);
+  border-radius:50%;
+  pointer-events:none;
+  transform:translate(-50%,-50%);
+  animation:mapRipple .8s ease-out forwards;
+}
+@keyframes mapRipple{
+  0%{width:0;height:0;opacity:1}
+  100%{width:120px;height:120px;opacity:0}
+}
+</style>
+</head>
+<body>
+
+<div class="preloader" id="preloader">
+  <div class="preloader-logo" id="preloaderLogo"></div>
+  <div class="preloader-bar"></div>
+  <div class="preloader-progress" id="preloaderProgress">0%</div>
+  <div class="preloader-text">Инициализация</div>
+</div>
+
+<div class="bg-layer bg-glow"></div>
+<div class="bg-layer bg-grid"></div>
+<div class="bg-layer bg-vignette"></div>
+<div class="orb orb-1"></div>
+<div class="orb orb-2"></div>
+<div class="orb orb-3"></div>
+<div class="scanlines"></div>
+
+<div class="cursor-dot" id="cursorDot"></div>
+<div class="cursor-ring" id="cursorRing"></div>
+
+<!-- START SCREEN -->
+<div class="start-screen" id="startScreen">
+  <div class="start-card">
+    <span class="start-tag">Geoguessr Style Game</span>
+    <h1 class="start-title" id="startTitle">
+      <span class="word"><span>Угадай</span></span><br>
+      <span class="word"><span>место на <em>Земле</em></span></span>
+    </h1>
+    <p class="start-desc">Тебе покажут фотографию реального места. Кликни на карте, где это может быть — и узнай, насколько близко ты угадал.</p>
+    <button class="btn btn-primary btn-block" id="startBtn" style="margin-bottom:24px;padding:20px 32px;font-size:.78rem">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M5 3l14 9-14 9V3z"/></svg>
+      Начать игру
+    </button>
+    <div class="start-features">
+      <div class="start-feature">
+        <div class="start-feature-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15 15 0 010 20M12 2a15 15 0 000 20"/></svg>
+        </div>
+        <div class="start-feature-title">5 раундов</div>
+        <div class="start-feature-desc">Случайные точки мира</div>
+      </div>
+      <div class="start-feature">
+        <div class="start-feature-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 2l3 7h7l-5.5 4 2 7L12 16l-6.5 4 2-7L2 9h7z"/></svg>
+        </div>
+        <div class="start-feature-title">5000 очков</div>
+        <div class="start-feature-desc">За каждый раунд</div>
+      </div>
+      <div class="start-feature">
+        <div class="start-feature-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 1118 0z"/><circle cx="12" cy="10" r="3"/></svg>
+        </div>
+        <div class="start-feature-title">Карта</div>
+        <div class="start-feature-desc">Кликни и подтверди</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- GAME -->
+<div class="game" id="game" style="display:none">
+  <div class="hud-top">
+    <div class="hud-brand">
+      <div class="hud-logo">G</div>
+      <div>
+        <div class="hud-brand-text">GEO.VOID</div>
+        <div class="hud-brand-sub">Guess</div>
+      </div>
+    </div>
+    <div class="hud-round" id="roundDots"></div>
+    <div class="hud-stats">
+      <div class="hud-stat">
+        <div class="hud-stat-label">Раунд</div>
+        <div class="hud-stat-value" id="hudRound">1/5</div>
+      </div>
+      <div class="hud-stat">
+        <div class="hud-stat-label">Очки</div>
+        <div class="hud-stat-value gold" id="hudScore">0</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="game-main">
+    <div class="pano-container">
+      <div id="pano"></div>
+      <div class="pano-overlay"></div>
+    </div>
+  </div>
+
+  <div class="hud-bottom">
+    <div class="compass">
+      <div class="compass-needle" id="compassNeedle"></div>
+      <div class="compass-n">N</div>
+      <div class="compass-s">S</div>
+      <div class="compass-e">E</div>
+      <div class="compass-w">W</div>
+    </div>
+    <div class="bottom-actions">
+      <button class="btn btn-ghost" id="openMapBtn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 1118 0z"/><circle cx="12" cy="10" r="3"/></svg>
+        Карта
+      </button>
+      <button class="btn btn-primary" id="confirmBtn" disabled>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M5 12l5 5L20 7"/></svg>
+        Готово
+      </button>
+    </div>
+  </div>
+
+  <div class="result-overlay" id="resultOverlay">
+    <div class="result-card" id="resultCard">
+      <div class="result-icon" id="resultIcon"></div>
+      <div class="result-title" id="resultTitle">Отлично</div>
+      <div class="result-sub" id="resultSub">Ты был близко</div>
+      <div class="result-stats">
+        <div class="result-stat">
+          <div class="result-stat-label">Расстояние</div>
+          <div class="result-stat-value neon" id="resultDistance">0 км</div>
+        </div>
+        <div class="result-stat">
+          <div class="result-stat-label">Очки</div>
+          <div class="result-stat-value" id="resultScore">0</div>
+        </div>
+      </div>
+      <button class="btn btn-primary btn-block" id="nextRoundBtn">
+        Следующий раунд
+      </button>
+    </div>
+  </div>
+</div>
+
+<div class="map-backdrop" id="mapBackdrop"></div>
+
+<div class="map-panel" id="mapPanel">
+  <div class="map-header">
+    <div class="map-title">Где ты?</div>
+    <div class="map-hint">Тапни по карте</div>
+    <button class="map-close" id="closeMapBtn" aria-label="Закрыть">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+    </button>
+  </div>
+  <div id="map"></div>
+  <div class="map-confirm-bar">
+    <button class="btn btn-ghost" id="mapCloseBtn">Закрыть</button>
+    <button class="btn btn-primary" id="mapConfirmBtn" disabled>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M5 12l5 5L20 7"/></svg>
+      Подтвердить
+    </button>
+  </div>
+</div>
+
+<div class="confetti-container" id="confettiContainer"></div>
+<div class="toast-wrap" id="toasts"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+/* =========================================================
+   GEO.VOID — Epic Edition
+   ========================================================= */
+
+/* ---------- PRELOADER ---------- */
+(function(){
+  var logoText = 'GEO.VOID';
+  var logoEl = document.getElementById('preloaderLogo');
+  logoText.split('').forEach(function(ch, i){
+    var span = document.createElement('span');
+    span.textContent = ch === ' ' ? '\u00A0' : ch;
+    span.style.animationDelay = (i * 0.08) + 's';
+    logoEl.appendChild(span);
+  });
+
+  var progress = 0;
+  var progressEl = document.getElementById('preloaderProgress');
+  var interval = setInterval(function(){
+    progress += Math.random() * 15;
+    if(progress > 100) progress = 100;
+    progressEl.textContent = Math.round(progress) + '%';
+    if(progress >= 100) clearInterval(interval);
+  }, 100);
+
+  var hidden = false;
+  function hide(){
+    if(hidden) return;
+    hidden = true;
+    clearInterval(interval);
+    progressEl.textContent = '100%';
+    setTimeout(function(){
+      document.getElementById('preloader').classList.add('hide');
+    }, 300);
+  }
+  if(document.readyState === 'complete'){ setTimeout(hide, 1800); }
+  else { window.addEventListener('load', function(){ setTimeout(hide, 1800); }); }
+  setTimeout(hide, 2800);
+})();
+
+var CONFIG = { ROUNDS: 5, MAX_SCORE: 5000 };
+
+/* ---------- LOCATIONS — каждый со своей страницей в Википедии ---------- */
+/* page — точное название статьи для надёжной загрузки картинки */
+var LOCATIONS = [
+  { lat: 48.8584,  lng: 2.2945,   name: 'Эйфелева башня, Париж',        page: 'Эйфелева_башня' },
+  { lat: 40.7580,  lng: -73.9855, name: 'Times Square, Нью-Йорк',      page: 'Таймс-сквер' },
+  { lat: 35.6595,  lng: 139.7005, name: 'Сибуя, Токио',                 page: 'Сибуя' },
+  { lat: 51.5007,  lng: -0.1246,  name: 'Биг-Бен, Лондон',              page: 'Биг-Бен' },
+  { lat: -33.8568, lng: 151.2153, name: 'Сиднейский оперный театр',    page: 'Сиднейский_оперный_театр' },
+  { lat: 41.8902,  lng: 12.4922,  name: 'Колизей, Рим',                 page: 'Колизей' },
+  { lat: 27.1751,  lng: 78.0421,  name: 'Тадж-Махал, Агра',             page: 'Тадж-Махал' },
+  { lat: 55.7558,  lng: 37.6173,  name: 'Красная площадь, Москва',      page: 'Красная_площадь' },
+  { lat: 25.1972,  lng: 55.2744,  name: 'Бурдж-Халифа, Дубай',          page: 'Бурдж-Халифа' },
+  { lat: -22.9519, lng: -43.2105, name: 'Статуя Христа, Рио',           page: 'Статуя_Христа-Искупителя' },
+  { lat: 29.9792,  lng: 31.1342,  name: 'Пирамиды Гизы, Египет',        page: 'Пирамиды_Гизы' },
+  { lat: 48.8606,  lng: 2.3376,   name: 'Лувр, Париж',                  page: 'Лувр' },
+  { lat: 41.4036,  lng: 2.1744,   name: 'Саграда Фамилия, Барселона',   page: 'Саграда_Фамилия' },
+  { lat: 37.9715,  lng: 23.7267,  name: 'Парфенон, Афины',              page: 'Парфенон' },
+  { lat: 52.5163,  lng: 13.3777,  name: 'Бранденбургские ворота, Берлин', page: 'Бранденбургские_ворота' },
+  { lat: 50.0875,  lng: 14.4213,  name: 'Пражский град',                page: 'Пражский_Град' },
+  { lat: 41.9029,  lng: 12.4534,  name: 'Собор Св. Петра, Ватикан',     page: 'Собор_Святого_Петра' },
+  { lat: 40.4319,  lng: -3.7035,  name: 'Пуэрта-дель-Соль, Мадрид',     page: 'Пуэрта-дель-Соль' },
+  { lat: 43.7696,  lng: 11.2558,  name: 'Дуомо, Флоренция',             page: 'Санта-Мария-дель-Фьоре' },
+  { lat: 35.0116,  lng: 135.7681, name: 'Киото, Япония',                page: 'Киото' },
+  { lat: -13.1631, lng: -72.5450, name: 'Мачу-Пикчу, Перу',             page: 'Мачу-Пикчу' },
+  { lat: 40.4319,  lng: 116.5704, name: 'Великая Китайская стена',      page: 'Великая_Китайская_стена' },
+  { lat: 64.1466,  lng: -21.9426, name: 'Рейкьявик, Исландия',          page: 'Рейкьявик' },
+  { lat: 22.3964,  lng: 114.1095, name: 'Гонконг',                      page: 'Гонконг' },
+  { lat: 51.5074,  lng: -0.1278,  name: 'Трафальгарская площадь, Лондон', page: 'Трафальгарская_площадь' },
+  { lat: 45.4642,  lng: 9.1900,   name: 'Миланский собор',              page: 'Миланский_собор' },
+  { lat: 59.9398,  lng: 30.3146,  name: 'Дворцовая площадь, СПб',       page: 'Дворцовая_площадь' },
+  { lat: 19.4326,  lng: -99.1332, name: 'Мексика-Сити',                 page: 'Мехико' },
+  { lat: 43.7102,  lng: 7.2620,   name: 'Ницца, Франция',               page: 'Ницца' },
+  { lat: -33.9249, lng: 18.4241,  name: 'Кейптаун, ЮАР',                page: 'Кейптаун' }
+];
+
+var state = {
+  round: 0,
+  totalRounds: CONFIG.ROUNDS,
+  score: 0,
+  currentLocation: null,
+  guessedLocation: null,
+  markers: [],
+  line: null,
+  isRevealed: false,
+  usedIndices: [],
+  map: null,
+  mapInitialized: false,
+  hintShown: false,
+  imageCache: {}
+};
+
+function haversine(lat1, lng1, lat2, lng2){
+  var R = 6371;
+  var dLat = (lat2 - lat1) * Math.PI / 180;
+  var dLng = (lng2 - lng1) * Math.PI / 180;
+  var a = Math.sin(dLat/2)*Math.sin(dLat/2) +
+          Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*
+          Math.sin(dLng/2)*Math.sin(dLng/2);
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
+function scoreFromDistance(km){
+  var s = Math.round(CONFIG.MAX_SCORE * Math.exp(-km / 1492.5));
+  return Math.max(0, Math.min(CONFIG.MAX_SCORE, s));
+}
+function randomLocation(){
+  if(state.usedIndices.length >= LOCATIONS.length) state.usedIndices = [];
+  var idx;
+  do { idx = Math.floor(Math.random() * LOCATIONS.length); }
+  while(state.usedIndices.indexOf(idx) !== -1);
+  state.usedIndices.push(idx);
+  return LOCATIONS[idx];
+}
+function fmt(n){ return n.toLocaleString('ru-RU'); }
+
+/* ---------- TOASTS ---------- */
+var toastWrap = document.getElementById('toasts');
+function toast(text, type){
+  var t = document.createElement('div');
+  t.className = 'toast' + (type ? ' '+type : '');
+  t.textContent = text;
+  toastWrap.appendChild(t);
+  setTimeout(function(){ t.remove(); }, 3400);
+}
+
+/* ---------- CURSOR + TRAIL ---------- */
+(function(){
+  var dot = document.getElementById('cursorDot');
+  var ring = document.getElementById('cursorRing');
+  if(!dot || !ring) return;
+  if(!window.matchMedia('(hover:hover) and (pointer:fine)').matches) return;
+
+  var mx=innerWidth/2,my=innerHeight/2,rx=mx,ry=my;
+  var trailPieces = [];
+  var TRAIL_MAX = 8;
+
+  window.addEventListener('mousemove', function(e){
+    mx=e.clientX;my=e.clientY;
+    dot.style.left=mx+'px';dot.style.top=my+'px';
+
+    // Trail
+    var trail = document.createElement('div');
+    trail.className = 'cursor-trail';
+    trail.style.left = mx + 'px';
+    trail.style.top = my + 'px';
+    trail.style.opacity = '0.7';
+    document.body.appendChild(trail);
+    trailPieces.push(trail);
+    setTimeout(function(){
+      trail.style.opacity = '0';
+      setTimeout(function(){ trail.remove(); }, 600);
+    }, 30);
+    if(trailPieces.length > TRAIL_MAX){
+      var old = trailPieces.shift();
+      if(old && old.parentNode) old.remove();
+    }
+  });
+
+  (function anim(){
+    rx+=(mx-rx)*0.18;ry+=(my-ry)*0.18;
+    ring.style.left=rx+'px';ring.style.top=ry+'px';
+    requestAnimationFrame(anim);
+  })();
+
+  window.addEventListener('mousedown', function(){ ring.classList.add('click'); });
+  window.addEventListener('mouseup', function(){ ring.classList.remove('click'); });
+
+  document.addEventListener('mouseover',function(e){
+    var t=e.target.closest('a,button,.leaflet-marker-icon,.start-feature,.result-stat');
+    ring.classList.toggle('grow',!!t);
+  });
+})();
+
+/* ---------- START SCREEN PARALLAX ---------- */
+(function(){
+  var start = document.getElementById('startScreen');
+  if(!start) return;
+  window.addEventListener('mousemove', function(e){
+    if(window.matchMedia('(hover:hover)').matches){
+      start.style.setProperty('--mx', e.clientX + 'px');
+      start.style.setProperty('--my', e.clientY + 'px');
+    }
+  });
+})();
+
+/* ---------- RIPPLE ON BUTTONS ---------- */
+document.addEventListener('click', function(e){
+  var btn = e.target.closest('.btn');
+  if(!btn) return;
+  var rect = btn.getBoundingClientRect();
+  var ripple = document.createElement('span');
+  ripple.className = 'ripple';
+  var size = Math.max(rect.width, rect.height);
+  ripple.style.width = ripple.style.height = size + 'px';
+  ripple.style.left = (e.clientX - rect.left - size/2) + 'px';
+  ripple.style.top = (e.clientY - rect.top - size/2) + 'px';
+  btn.appendChild(ripple);
+  setTimeout(function(){ ripple.remove(); }, 700);
+});
+
+/* ---------- MAGNETIC BUTTONS ---------- */
+(function(){
+  if(!window.matchMedia('(hover:hover) and (pointer:fine)').matches) return;
+  document.addEventListener('mousemove', function(e){
+    var btn = e.target.closest('.btn-primary');
+    if(!btn) return;
+    var rect = btn.getBoundingClientRect();
+    var cx = rect.left + rect.width/2;
+    var cy = rect.top + rect.height/2;
+    var dx = (e.clientX - cx) * 0.15;
+    var dy = (e.clientY - cy) * 0.15;
+    btn.style.transform = 'translate(' + dx + 'px,' + dy + 'px) translateY(-3px) scale(1.02)';
+  });
+  document.addEventListener('mouseout', function(e){
+    var btn = e.target.closest('.btn-primary');
+    if(btn) btn.style.transform = '';
+  });
+})();
+
+/* ---------- 3D TILT ON RESULT CARD ---------- */
+(function(){
+  var card = document.getElementById('resultCard');
+  if(!card) return;
+  if(!window.matchMedia('(hover:hover) and (pointer:fine)').matches) return;
+  card.addEventListener('mousemove', function(e){
+    var rect = card.getBoundingClientRect();
+    var x = (e.clientX - rect.left) / rect.width - 0.5;
+    var y = (e.clientY - rect.top) / rect.height - 0.5;
+    card.style.transform = 'perspective(1000px) rotateY(' + (x * 8) + 'deg) rotateX(' + (-y * 8) + 'deg)';
+  });
+  card.addEventListener('mouseleave', function(){
+    card.style.transform = '';
+  });
+})();
+
+/* ---------- WIKIPEDIA IMAGE (по конкретной странице) ---------- */
+function fetchWikiImageByTitle(title){
+  if(state.imageCache[title]) return Promise.resolve(state.imageCache[title]);
+  return new Promise(function(resolve){
+    var url = 'https://ru.wikipedia.org/w/api.php' +
+      '?action=query&format=json&origin=*' +
+      '&titles=' + encodeURIComponent(title) +
+      '&prop=pageimages' +
+      '&piprop=original|thumbnail' +
+      '&pithumbsize=1600';
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', url, true);
+    xhr.timeout = 6000;
+    xhr.onload = function(){
+      if(xhr.status !== 200){ resolve(null); return; }
+      try {
+        var data = JSON.parse(xhr.responseText);
+        var pages = data.query && data.query.pages;
+        if(!pages){ resolve(null); return; }
+        for(var id in pages){
+          var p = pages[id];
+          var src = null;
+          if(p.original && p.original.source) src = p.original.source;
+          else if(p.thumbnail && p.thumbnail.source) src = p.thumbnail.source;
+          if(src){
+            state.imageCache[title] = src;
+            resolve(src);
+            return;
+          }
+        }
+        resolve(null);
+      } catch(e){ resolve(null); }
+    };
+    xhr.onerror = function(){ resolve(null); };
+    xhr.ontimeout = function(){ resolve(null); };
+    xhr.send();
+  });
+}
+
+/* Preload all images in background */
+function preloadAllImages(){
+  LOCATIONS.forEach(function(loc, i){
+    setTimeout(function(){
+      fetchWikiImageByTitle(loc.page).catch(function(){});
+    }, i * 400);
+  });
+}
+
+/* ---------- LOAD PANO ---------- */
+function loadImageForLocation(loc){
+  var pano = document.getElementById('pano');
+  pano.innerHTML = '';
+
+  var skeleton = document.createElement('div');
+  skeleton.className = 'pano-skeleton';
+  skeleton.innerHTML =
+    '<div class="skeleton-shimmer"></div>' +
+    '<div class="pano-skeleton-content">' +
+      '<div class="spinner-hex"></div>' +
+      '<div class="pano-loading-text">Загрузка места</div>' +
+    '</div>';
+  pano.appendChild(skeleton);
+
+  var startTime = Date.now();
+
+  fetchWikiImageByTitle(loc.page).then(function(url){
+    var elapsed = Date.now() - startTime;
+    var delay = Math.max(0, 900 - elapsed);
+
+    setTimeout(function(){
+      skeleton.remove();
+
+      if(!url){
+        var empty = document.createElement('div');
+        empty.className = 'pano-skeleton';
+        empty.innerHTML =
+          '<div class="pano-skeleton-content">' +
+            '<div style="font-family:var(--font-display);font-weight:900;font-size:1.1rem;color:#fff;opacity:.7">Фото недоступно</div>' +
+            '<div style="font-size:.8rem;color:rgba(220,252,231,.5);max-width:300px;text-align:center;line-height:1.6">Открой карту и попробуй угадать по общей обстановке</div>' +
+          '</div>';
+        pano.appendChild(empty);
+        return;
+      }
+
+      var img = document.createElement('img');
+      img.className = 'loading';
+      img.crossOrigin = 'anonymous';
+      img.onload = function(){
+        img.classList.remove('loading');
+        img.classList.add('loaded');
+      };
+      img.onerror = function(){
+        if(img.parentNode) img.parentNode.removeChild(img);
+      };
+      img.src = url;
+      pano.appendChild(img);
+
+      var credit = document.createElement('div');
+      credit.className = 'photo-credit';
+      credit.textContent = 'Wikimedia Commons';
+      pano.appendChild(credit);
+    }, delay);
+  }).catch(function(){
+    setTimeout(function(){
+      skeleton.remove();
+      var empty = document.createElement('div');
+      empty.className = 'pano-skeleton';
+      empty.innerHTML =
+        '<div class="pano-skeleton-content">' +
+          '<div style="font-family:var(--font-display);font-weight:900;font-size:1.1rem;color:#fff;opacity:.7">Ошибка загрузки</div>' +
+          '<div style="font-size:.8rem;color:rgba(220,252,231,.5);max-width:300px;text-align:center;line-height:1.6">Попробуй угадать наугад</div>' +
+        '</div>';
+      pano.appendChild(empty);
+    }, 500);
+  });
+}
+
+/* ---------- MAP ---------- */
+function initMap(){
+  if(state.mapInitialized) return;
+  state.mapInitialized = true;
+  state.map = L.map('map', {
+    center: [20, 0], zoom: 2, minZoom: 2, maxZoom: 18,
+    worldCopyJump: true, zoomControl: true
+  });
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenStreetMap', maxZoom: 19
+  }).addTo(state.map);
+  state.map.on('click', function(e){
+    if(state.isRevealed) return;
+    placeGuessMarker(e.latlng);
+  });
+}
+
+function placeGuessMarker(latlng){
+  state.markers.forEach(function(m){ state.map.removeLayer(m); });
+  state.markers = [];
+
+  var icon = L.divIcon({
+    className: 'guess-marker',
+    html: '<div style="width:28px;height:28px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);background:linear-gradient(135deg,#00ff88,#10b981);border:3px solid #fff;box-shadow:0 0 25px #00ff88,0 4px 12px rgba(0,0,0,.6);animation:pulseGuess 1.8s ease-in-out infinite"></div>',
+    iconSize: [28, 28], iconAnchor: [14, 28]
+  });
+  var marker = L.marker(latlng, { icon: icon, draggable: true }).addTo(state.map);
+  marker.on('dragend', function(){
+    var pos = marker.getLatLng();
+    state.guessedLocation = { lat: pos.lat, lng: pos.lng };
+  });
+  state.markers.push(marker);
+  state.guessedLocation = { lat: latlng.lat, lng: latlng.lng };
+
+  document.getElementById('confirmBtn').disabled = false;
+  document.getElementById('mapConfirmBtn').disabled = false;
+
+  // Ripple on map
+  var container = state.map.getContainer();
+  var pt = state.map.latLngToContainerPoint(latlng);
+  var ripple = document.createElement('div');
+  ripple.className = 'map-ripple';
+  ripple.style.left = pt.x + 'px';
+  ripple.style.top = pt.y + 'px';
+  container.appendChild(ripple);
+  setTimeout(function(){ ripple.remove(); }, 900);
+}
+
+/* ---------- GAME ---------- */
+function startGame(){
+  document.getElementById('startScreen').style.display = 'none';
+  document.getElementById('game').style.display = 'flex';
+  state.round = 0;
+  state.score = 0;
+  state.usedIndices = [];
+  updateHUD();
+  nextRound();
+  // Preload images в фоне
+  preloadAllImages();
+}
+function updateHUD(){
+  document.getElementById('hudRound').textContent =
+    Math.min(state.round + 1, state.totalRounds) + '/' + state.totalRounds;
+  var scoreEl = document.getElementById('hudScore');
+  scoreEl.textContent = fmt(state.score);
+  scoreEl.classList.remove('bump');
+  void scoreEl.offsetWidth;
+  scoreEl.classList.add('bump');
+  renderRoundDots();
+}
+function renderRoundDots(){
+  var el = document.getElementById('roundDots');
+  el.innerHTML = '';
+  for(var i = 0; i < state.totalRounds; i++){
+    var d = document.createElement('div');
+    d.className = 'round-dot';
+    if(i < state.round) d.classList.add('done');
+    if(i === state.round) d.classList.add('active');
+    el.appendChild(d);
+  }
+}
+function nextRound(){
+  state.isRevealed = false;
+  state.guessedLocation = null;
+  state.hintShown = false;
+  document.getElementById('resultOverlay').classList.remove('show');
+  closeMapPanel();
+  document.getElementById('confirmBtn').disabled = true;
+  document.getElementById('mapConfirmBtn').disabled = true;
+
+  if(state.map){
+    state.markers.forEach(function(m){ state.map.removeLayer(m); });
+    state.markers = [];
+    if(state.line){ state.map.removeLayer(state.line); state.line = null; }
+    state.map.setView([20, 0], 2);
+  }
+
+  state.currentLocation = randomLocation();
+  loadImageForLocation(state.currentLocation);
+  updateHUD();
+  toast('Раунд ' + (state.round + 1) + ' из ' + state.totalRounds);
+}
+
+function openMapPanel(){
+  document.getElementById('mapBackdrop').classList.add('show');
+  document.getElementById('mapPanel').classList.add('show');
+  if(!state.mapInitialized){
+    setTimeout(function(){
+      initMap();
+      setTimeout(function(){ state.map.invalidateSize(); }, 250);
+    }, 100);
+  } else {
+    setTimeout(function(){ state.map.invalidateSize(); }, 250);
+  }
+}
+function closeMapPanel(){
+  document.getElementById('mapBackdrop').classList.remove('show');
+  document.getElementById('mapPanel').classList.remove('show');
+}
+
+function confirmGuess(){
+  if(!state.guessedLocation){
+    toast('Поставь маркер на карте', 'error');
+    return;
+  }
+  openMapPanel();
+  setTimeout(function(){ revealResult(); }, 200);
+}
+
+/* ---------- CONFETTI ---------- */
+function throwConfetti(count){
+  var container = document.getElementById('confettiContainer');
+  var colors = ['#00ff88', '#4dffb8', '#a3e635', '#10b981', '#ffffff', '#ffd700'];
+  for(var i = 0; i < count; i++){
+    var piece = document.createElement('div');
+    piece.className = 'confetti-piece';
+    piece.style.left = Math.random() * 100 + '%';
+    piece.style.top = '-20px';
+    piece.style.background = colors[Math.floor(Math.random() * colors.length)];
+    piece.style.width = (4 + Math.random() * 8) + 'px';
+    piece.style.height = (4 + Math.random() * 8) + 'px';
+    piece.style.borderRadius = Math.random() > 0.5 ? '50%' : '2px';
+    piece.style.animationDelay = (Math.random() * 0.8) + 's';
+    piece.style.animationDuration = (2 + Math.random() * 1.5) + 's';
+    piece.style.boxShadow = '0 0 10px currentColor';
+    container.appendChild(piece);
+    setTimeout(function(){ piece.remove(); }, 4000);
+  }
+}
+
+/* ---------- SCREEN SHAKE ---------- */
+function screenShake(){
+  document.body.classList.remove('shake');
+  void document.body.offsetWidth;
+  document.body.classList.add('shake');
+  setTimeout(function(){ document.body.classList.remove('shake'); }, 600);
+}
+
+/* ---------- REVEAL ---------- */
+function revealResult(){
+  state.isRevealed = true;
+  var target = state.currentLocation;
+  var guess = state.guessedLocation;
+
+  if(!state.markers.length){
+    placeGuessMarker(L.latLng(guess.lat, guess.lng));
+  }
+  var correctIcon = L.divIcon({
+    className: 'correct-marker',
+    html: '<div style="width:32px;height:32px;border-radius:50%;background:radial-gradient(circle at 30% 30%,#fff,#ffd700);border:3px solid #fff;box-shadow:0 0 30px #ffd700,0 0 60px rgba(255,215,0,.6);animation:pulseCorrect 1.5s ease-in-out infinite"></div>',
+    iconSize: [32, 32], iconAnchor: [16, 16]
+  });
+  var correctMarker = L.marker([target.lat, target.lng], { icon: correctIcon }).addTo(state.map);
+  state.markers.push(correctMarker);
+
+  state.line = L.polyline(
+    [[guess.lat, guess.lng], [target.lat, target.lng]],
+    { color: '#00ff88', weight: 3, opacity: 0.85, dashArray: '8, 8' }
+  ).addTo(state.map);
+
+  try { state.map.fitBounds(state.line.getBounds().pad(0.3), { animate: true, duration: 1 }); } catch(e){}
+
+  var dist = haversine(guess.lat, guess.lng, target.lat, target.lng);
+  var roundScore = scoreFromDistance(dist);
+  state.score += roundScore;
+
+  var iconSvg, title, sub, confettiCount = 0, doShake = false;
+  if(dist < 50){
+    iconSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M8 12l3 3 6-6"/></svg>';
+    title = 'Идеально'; sub = 'Ты почти местный';
+    confettiCount = 80;
+  } else if(dist < 200){
+    iconSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M8 12l3 3 6-6"/></svg>';
+    title = 'Отлично'; sub = 'Ты был очень близко';
+    confettiCount = 50;
+  } else if(dist < 1000){
+    iconSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M8 12l3 3 6-6"/></svg>';
+    title = 'Хорошо'; sub = 'Правильный регион';
+    confettiCount = 20;
+  } else if(dist < 3000){
+    iconSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>';
+    title = 'Неплохо'; sub = 'Страна или соседняя';
+  } else if(dist < 7000){
+    iconSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>';
+    title = 'Мимо'; sub = 'Направление верное';
+    doShake = true;
+  } else {
+    iconSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M15 9l-6 6M9 9l6 6"/></svg>';
+    title = 'Очень далеко'; sub = 'Другой конец мира';
+    doShake = true;
+  }
+
+  if(doShake) screenShake();
+  if(confettiCount) setTimeout(function(){ throwConfetti(confettiCount); }, 400);
+
+  document.getElementById('resultIcon').innerHTML = iconSvg;
+  document.getElementById('resultTitle').textContent = title;
+  document.getElementById('resultSub').textContent = 'Это был: ' + target.name + '. ' + sub + '.';
+  document.getElementById('resultDistance').textContent = dist < 1
+    ? Math.round(dist * 1000) + ' м'
+    : fmt(Math.round(dist)) + ' км';
+  document.getElementById('resultScore').textContent = fmt(roundScore);
+
+  updateHUD();
+  document.getElementById('resultOverlay').classList.add('show');
+
+  var nextBtn = document.getElementById('nextRoundBtn');
+  nextBtn.textContent = (state.round + 1 >= state.totalRounds)
+    ? 'Показать итог' : 'Следующий раунд';
+}
+
+function nextRoundOrEnd(){
+  document.getElementById('resultOverlay').classList.remove('show');
+  closeMapPanel();
+  state.round++;
+  if(state.round >= state.totalRounds){
+    showFinalScore();
+  } else {
+    nextRound();
+  }
+}
+
+function showFinalScore(){
+  var maxPossible = CONFIG.MAX_SCORE * state.totalRounds;
+  var percent = Math.round(state.score / maxPossible * 100);
+
+  var rank = 'Новичок';
+  var rankIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 2v20M2 12h20"/></svg>';
+  var confetti = 0;
+
+  if(percent >= 90){
+    rank='Легенда'; confetti = 150;
+    rankIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M2 4l3 12h14l3-12-6 7-4-7-4 7z"/></svg>';
+  } else if(percent >= 70){
+    rank='Эксперт'; confetti = 100;
+    rankIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 2l3 7h7l-5.5 4 2 7L12 16l-6.5 4 2-7L2 9h7z"/></svg>';
+  } else if(percent >= 50){
+    rank='Путешественник'; confetti = 50;
+    rankIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15 15 0 010 20M12 2a15 15 0 000 20"/></svg>';
+  } else if(percent >= 30){
+    rank='Турист';
+    rankIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16l-2 13H6zM9 7V4h6v3"/></svg>';
+  } else if(percent >= 15){
+    rank='Начинающий';
+    rankIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 2v20M2 12h20M5 5l14 14M5 19L19 5"/></svg>';
+  }
+
+  document.getElementById('resultIcon').innerHTML = rankIcon;
+  document.getElementById('resultTitle').textContent = 'Игра окончена';
+  document.getElementById('resultSub').innerHTML =
+    'Твой ранг: <b style="color:var(--neon)">' + rank + '</b><br>' +
+    'Набрано ' + fmt(state.score) + ' из ' + fmt(maxPossible) + ' (' + percent + '%)';
+  document.getElementById('resultDistance').textContent = state.totalRounds + ' раундов';
+  document.getElementById('resultScore').textContent = fmt(state.score);
+
+  if(confetti) setTimeout(function(){ throwConfetti(confetti); }, 400);
+
+  var nextBtn = document.getElementById('nextRoundBtn');
+  nextBtn.textContent = 'Играть снова';
+  nextBtn.onclick = function(){
+    document.getElementById('resultOverlay').classList.remove('show');
+    startGame();
+    nextBtn.onclick = nextRoundOrEnd;
+  };
+
+  document.getElementById('resultOverlay').classList.add('show');
+}
+
+/* ---------- COMPASS ---------- */
+(function(){
+  var angle = 0;
+  setInterval(function(){
+    var needle = document.getElementById('compassNeedle');
+    if(needle){
+      angle += 0.3;
+      var a = Math.sin(angle) * 20;
+      needle.style.transform = 'rotate(' + a + 'deg)';
+    }
+  }, 100);
+})();
+
+/* ---------- EVENTS ---------- */
+document.getElementById('startBtn').addEventListener('click', startGame);
+document.getElementById('openMapBtn').addEventListener('click', function(){
+  var panel = document.getElementById('mapPanel');
+  if(panel.classList.contains('show')) closeMapPanel();
+  else openMapPanel();
+});
+document.getElementById('confirmBtn').addEventListener('click', confirmGuess);
+document.getElementById('nextRoundBtn').addEventListener('click', nextRoundOrEnd);
+
+document.getElementById('closeMapBtn').addEventListener('click', closeMapPanel);
+document.getElementById('mapCloseBtn').addEventListener('click', closeMapPanel);
+document.getElementById('mapBackdrop').addEventListener('click', closeMapPanel);
+document.getElementById('mapConfirmBtn').addEventListener('click', confirmGuess);
+
+document.addEventListener('keydown', function(e){
+  if(e.key === 'Escape') closeMapPanel();
+  if(e.key === 'Enter' && !document.getElementById('confirmBtn').disabled){
+    confirmGuess();
+  }
+  if(e.key === 'm' || e.key === 'M'){
+    if(document.getElementById('game').style.display !== 'none'){
+      var panel = document.getElementById('mapPanel');
+      if(panel.classList.contains('show')) closeMapPanel();
+      else openMapPanel();
+    }
+  }
+});
+
+window.addEventListener('error', function(e){
+  console.error('Error:', e.message);
+});
+
+console.log('%c GEO.VOID — Epic Edition ',
+  'background:linear-gradient(135deg,#00ff88,#a3e635);color:#000;font-weight:900;padding:8px 16px;border-radius:6px;font-size:14px;letter-spacing:2px');
+console.log('%c Локаций в базе: ' + LOCATIONS.length, 'color:#00ff88;font-weight:700');
+console.log('%c Управление: M — карта, Enter — подтвердить, Esc — закрыть', 'color:#4dffb8');
+</script>
+</body>
+</html>
